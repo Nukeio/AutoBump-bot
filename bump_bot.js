@@ -1,7 +1,7 @@
 const { Client, GatewayIntentBits } = require("discord.js");
 
-const TOKEN = "YOUR_BOT_TOKEN_HERE"; // Replace with your bot token
-const BUMP_CHANNEL_ID = "YOUR_BUMP_CHANNEL_ID_HERE"; // Replace with your bump channel ID
+const TOKEN = process.env.BOT_TOKEN;
+const BUMP_CHANNEL_ID = process.env.BUMP_CHANNEL_ID;
 const BUMP_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
 
 const client = new Client({
