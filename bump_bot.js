@@ -2,7 +2,6 @@ const { Client, GatewayIntentBits, Events, EmbedBuilder, Colors } = require("dis
 
 const TOKEN = process.env.BOT_TOKEN;
 const BUMP_CHANNEL_ID = process.env.BUMP_CHANNEL_ID;
-const OWNER_ID = process.env.OWNER_ID; // Your Discord user ID
 const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 const client = new Client({
@@ -92,70 +91,26 @@ async function sendBumpSuccess(channel) {
   }, 10 * 60 * 1000);
 }
 
-function isBumpSuccess(message) {
-  if (message.author.id !== "302050872383242240") return false;
-  if (message.embeds.length === 0) return false;
-
-  const desc = message.embeds[0]?.description?.toLowerCase() ?? "";
-  const title = message.embeds[0]?.title?.toLowerCase() ?? "";
-
-  // Covers all known Disboard bump success message variants
-  return (
-    desc.includes("bump done") ||
-    desc.includes("bumped") ||
-    title.includes("bump done") ||
-    title.includes("bumped")
-  );
-}
-
-function handleBumpSuccess(channel) {
-  console.log("✅ Bump detected! Pausing reminders for 2 hours.");
-  clearInterval(reminderInterval);
-
-  sendBumpSuccess(channel);
-
-  // Resume reminders after 2 hours
-  setTimeout(() => {
-    sendBumpReminder();
-    reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
-  }, 2 * 60 * 60 * 1000);
-}
-
-// Catch regular messages from Disboard (older behavior)
+// Listen for Disboard bump confirmation
 client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot) return;
-
-  // Manual trigger: only you (OWNER_ID) can run !remind
-  if (message.content.trim() === "!remind") {
-    if (message.author.id !== OWNER_ID) {
-      const reply = await message.reply("❌ You don't have permission to do that.");
-      setTimeout(() => reply.delete().catch(() => {}), 5000);
-      return;
-    }
-    try { await message.delete(); } catch (_) {}
-    await sendBumpReminder();
-    return;
-  }
-
-  if (isBumpSuccess(message)) {
-    try { await message.delete(); } catch (_) {}
-    handleBumpSuccess(message.channel);
-  }
-});
-
-// Catch Disboard's interaction/slash command response (new behavior)
-client.on(Events.InteractionCreate, async (interaction) => {
   if (
-    !interaction.isCommand?.() &&
-    interaction.applicationId === "302050872383242240"
+    message.author.id === "302050872383242240" &&
+    message.embeds.length > 0 &&
+    message.embeds[0]?.description?.includes("Bump done")
   ) {
-    // Log to help debug if embed content differs
-    console.log("📨 Disboard interaction received:", JSON.stringify(interaction?.message?.embeds?.[0] ?? {}));
+    console.log("✅ Bump detected! Resetting timer to 2 hours.");
 
-    if (interaction.message && isBumpSuccess(interaction.message)) {
-      try { await interaction.message.delete(); } catch (_) {}
-      handleBumpSuccess(interaction.channel);
-    }
+    // Delete Disboard's own confirmation message for a cleaner channel
+    try { await message.delete(); } catch (_) {}
+
+    await sendBumpSuccess(message.channel);
+
+    // Reset interval: remind again after 2 hours
+    clearInterval(reminderInterval);
+    setTimeout(() => {
+      sendBumpReminder();
+      reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
+    }, 2 * 60 * 60 * 1000);
   }
 });
 
