@@ -1,7 +1,8 @@
-const { Client, GatewayIntentBits, Events, EmbedBuilder, Colors } = require("discord.js");
+const { Client, GatewayIntentBits, Events, EmbedBuilder } = require("discord.js");
 
 const TOKEN = process.env.BOT_TOKEN;
 const BUMP_CHANNEL_ID = process.env.BUMP_CHANNEL_ID;
+const OWNER_ID = process.env.OWNER_ID;
 const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 const client = new Client({
@@ -13,7 +14,31 @@ const client = new Client({
 });
 
 let reminderInterval;
-let lastBotMessage = null; // Track last bot message to delete it
+let lastBotMessage = null;
+let stickyTimeout = null; // Debounce sticky repost so it doesn't spam
+
+// ── Auto-reconnect on disconnect ──────────────────────────────────────────────
+client.on(Events.ShardDisconnect, (event, shardId) => {
+  console.warn(`⚠️ Shard ${shardId} disconnected (code ${event.code}). Reconnecting...`);
+});
+
+client.on(Events.ShardReconnecting, (shardId) => {
+  console.log(`🔄 Shard ${shardId} reconnecting...`);
+});
+
+client.on(Events.ShardResume, (shardId, replayedEvents) => {
+  console.log(`✅ Shard ${shardId} resumed. Replayed ${replayedEvents} events.`);
+});
+
+// Catch any unhandled errors so the process never crashes
+process.on("unhandledRejection", (error) => {
+  console.error("⚠️ Unhandled promise rejection:", error?.message ?? error);
+});
+
+process.on("uncaughtException", (error) => {
+  console.error("⚠️ Uncaught exception:", error?.message ?? error);
+});
+
 
 async function sendBumpReminder() {
   try {
@@ -91,26 +116,87 @@ async function sendBumpSuccess(channel) {
   }, 10 * 60 * 1000);
 }
 
-// Listen for Disboard bump confirmation
+function isBumpSuccess(message) {
+  if (message.author.id !== "302050872383242240") return false;
+  if (message.embeds.length === 0) return false;
+
+  const desc = message.embeds[0]?.description?.toLowerCase() ?? "";
+  const title = message.embeds[0]?.title?.toLowerCase() ?? "";
+
+  // Covers all known Disboard bump success message variants
+  return (
+    desc.includes("bump done") ||
+    desc.includes("bumped") ||
+    title.includes("bump done") ||
+    title.includes("bumped")
+  );
+}
+
+function handleBumpSuccess(channel) {
+  console.log("✅ Bump detected! Pausing reminders for 2 hours.");
+  clearInterval(reminderInterval);
+
+  sendBumpSuccess(channel);
+
+  // Resume reminders after 2 hours
+  setTimeout(() => {
+    sendBumpReminder();
+    reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
+  }, 2 * 60 * 60 * 1000);
+}
+
+// Catch regular messages from Disboard (older behavior)
 client.on(Events.MessageCreate, async (message) => {
-  if (
-    message.author.id === "302050872383242240" &&
-    message.embeds.length > 0 &&
-    message.embeds[0]?.description?.includes("Bump done")
-  ) {
-    console.log("✅ Bump detected! Resetting timer to 2 hours.");
+  if (message.author.bot) return;
+  if (message.channel.id !== BUMP_CHANNEL_ID) return;
 
-    // Delete Disboard's own confirmation message for a cleaner channel
+  // Manual trigger: only you (OWNER_ID) can run !remind
+  if (message.content.trim() === "!remind") {
+    if (message.author.id !== OWNER_ID) {
+      const reply = await message.reply("❌ You don't have permission to do that.");
+      setTimeout(() => reply.delete().catch(() => {}), 5000);
+      return;
+    }
     try { await message.delete(); } catch (_) {}
+    await sendBumpReminder();
+    return;
+  }
 
-    await sendBumpSuccess(message.channel);
+  if (isBumpSuccess(message)) {
+    try { await message.delete(); } catch (_) {}
+    handleBumpSuccess(message.channel);
+    return;
+  }
 
-    // Reset interval: remind again after 2 hours
-    clearInterval(reminderInterval);
-    setTimeout(() => {
-      sendBumpReminder();
-      reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
-    }, 2 * 60 * 60 * 1000);
+  // ── Sticky logic ─────────────────────────────────────────────────────────
+  // When anyone sends a message in the bump channel, repost the reminder
+  // to the bottom after a short delay (debounced so rapid messages = 1 repost)
+  if (lastBotMessage) {
+    clearTimeout(stickyTimeout);
+    stickyTimeout = setTimeout(async () => {
+      try {
+        // Delete old reminder and repost it at the bottom
+        await lastBotMessage.delete();
+        lastBotMessage = null;
+        await sendBumpReminder();
+      } catch (_) {}
+    }, 3000); // Wait 3 seconds after last message before reposting
+  }
+});
+
+// Catch Disboard's interaction/slash command response (new behavior)
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (
+    !interaction.isCommand?.() &&
+    interaction.applicationId === "302050872383242240"
+  ) {
+    // Log to help debug if embed content differs
+    console.log("📨 Disboard interaction received:", JSON.stringify(interaction?.message?.embeds?.[0] ?? {}));
+
+    if (interaction.message && isBumpSuccess(interaction.message)) {
+      try { await interaction.message.delete(); } catch (_) {}
+      handleBumpSuccess(interaction.channel);
+    }
   }
 });
 
