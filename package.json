@@ -1,0 +1,12 @@
+{
+  "name": "disboard-bump-bot",
+  "version": "1.0.0",
+  "description": "Auto bump bot for Disboard every 2 hours",
+  "main": "bump_bot.js",
+  "scripts": {
+    "start": "node bump_bot.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.0.0"
+  }
+}
