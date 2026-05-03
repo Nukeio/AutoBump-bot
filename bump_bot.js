@@ -91,26 +91,56 @@ async function sendBumpSuccess(channel) {
   }, 10 * 60 * 1000);
 }
 
-// Listen for Disboard bump confirmation
+function isBumpSuccess(message) {
+  if (message.author.id !== "302050872383242240") return false;
+  if (message.embeds.length === 0) return false;
+
+  const desc = message.embeds[0]?.description?.toLowerCase() ?? "";
+  const title = message.embeds[0]?.title?.toLowerCase() ?? "";
+
+  // Covers all known Disboard bump success message variants
+  return (
+    desc.includes("bump done") ||
+    desc.includes("bumped") ||
+    title.includes("bump done") ||
+    title.includes("bumped")
+  );
+}
+
+function handleBumpSuccess(channel) {
+  console.log("✅ Bump detected! Pausing reminders for 2 hours.");
+  clearInterval(reminderInterval);
+
+  sendBumpSuccess(channel);
+
+  // Resume reminders after 2 hours
+  setTimeout(() => {
+    sendBumpReminder();
+    reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
+  }, 2 * 60 * 60 * 1000);
+}
+
+// Catch regular messages from Disboard (older behavior)
 client.on(Events.MessageCreate, async (message) => {
-  if (
-    message.author.id === "302050872383242240" &&
-    message.embeds.length > 0 &&
-    message.embeds[0]?.description?.includes("Bump done")
-  ) {
-    console.log("✅ Bump detected! Resetting timer to 2 hours.");
-
-    // Delete Disboard's own confirmation message for a cleaner channel
+  if (isBumpSuccess(message)) {
     try { await message.delete(); } catch (_) {}
+    handleBumpSuccess(message.channel);
+  }
+});
 
-    await sendBumpSuccess(message.channel);
+// Catch Disboard's interaction/slash command response (new behavior)
+client.on(Events.InteractionCreate, async (interaction) => {
+  if (
+    !interaction.isCommand?.() &&
+    interaction.applicationId === "302050872383242240"
+  ) {
+    // Log to help debug if embed content differs
+    console.log("📨 Disboard interaction received:", JSON.stringify(interaction?.message?.embeds?.[0] ?? {}));
 
-    // Reset interval: remind again after 2 hours
-    clearInterval(reminderInterval);
-    setTimeout(() => {
-      sendBumpReminder();
-      reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
-    }, 2 * 60 * 60 * 1000);
+    if (interaction.message && isBumpSuccess(interaction.message)) {
+      try { await interaction.message.delete(); } catch (_) {}
+      handleBumpSuccess(interaction.channel);
+    }
   }
 });
 
