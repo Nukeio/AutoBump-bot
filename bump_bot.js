@@ -1,39 +1,125 @@
-const { Client, GatewayIntentBits } = require("discord.js");
+const { Client, GatewayIntentBits, Events, EmbedBuilder, Colors } = require("discord.js");
 
 const TOKEN = process.env.BOT_TOKEN;
 const BUMP_CHANNEL_ID = process.env.BUMP_CHANNEL_ID;
-const BUMP_INTERVAL_MS = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
 });
 
-async function sendBump() {
+let reminderInterval;
+let lastBotMessage = null; // Track last bot message to delete it
+
+async function sendBumpReminder() {
   try {
     const channel = await client.channels.fetch(BUMP_CHANNEL_ID);
     if (!channel) {
-      console.error("❌ Bump channel not found! Check your BUMP_CHANNEL_ID.");
+      console.error("❌ Bump channel not found!");
       return;
     }
 
-    // Send the Disboard bump command
-    await channel.send("!d bump");
+    // Delete previous bot reminder message if it exists
+    if (lastBotMessage) {
+      try {
+        await lastBotMessage.delete();
+      } catch (_) {
+        // Message may have already been deleted, ignore
+      }
+      lastBotMessage = null;
+    }
+
+    const embed = new EmbedBuilder()
+      .setTitle("🚀 Bump the Server!")
+      .setDescription(
+        "**Help us grow by bumping the server on Disboard!**\n\n" +
+        "📌 **How to bump:**\n" +
+        "> Type `/bump` in this channel\n" +
+        "> Select **DISBOARD** from the bot list\n" +
+        "> Hit enter and you're done!\n\n" +
+        "🎯 Bumping helps new members discover our server.\n" +
+        "⏰ **Every bump counts — thank you!**"
+      )
+      .setColor(0x5865f2) // Discord blurple
+      .setThumbnail("https://disboard.org/images/bot-command-image-disboard.png")
+      .setFooter({ text: "Reminder sent every 15 minutes until bumped" })
+      .setTimestamp();
+
+    const sent = await channel.send({ embeds: [embed] });
+    lastBotMessage = sent;
+
     const timestamp = new Date().toLocaleString();
-    console.log(`✅ [${timestamp}] Bump command sent successfully!`);
+    console.log(`✅ [${timestamp}] Bump reminder sent!`);
   } catch (error) {
-    console.error("❌ Failed to send bump:", error.message);
+    console.error("❌ Failed to send reminder:", error.message);
   }
 }
 
-client.once("ready", () => {
+async function sendBumpSuccess(channel) {
+  // Delete the reminder message when someone bumps
+  if (lastBotMessage) {
+    try {
+      await lastBotMessage.delete();
+    } catch (_) {}
+    lastBotMessage = null;
+  }
+
+  const embed = new EmbedBuilder()
+    .setTitle("✅ Server Bumped!")
+    .setDescription(
+      "**Thanks for bumping the server!** 🎉\n\n" +
+      "The next reminder will be sent in **2 hours**.\n" +
+      "Keep up the great work helping the server grow! 💪"
+    )
+    .setColor(0x57f287) // Green
+    .setFooter({ text: "Next reminder in 2 hours" })
+    .setTimestamp();
+
+  const sent = await channel.send({ embeds: [embed] });
+  lastBotMessage = sent;
+
+  // Auto delete success message after 10 minutes
+  setTimeout(async () => {
+    try {
+      await sent.delete();
+      if (lastBotMessage?.id === sent.id) lastBotMessage = null;
+    } catch (_) {}
+  }, 10 * 60 * 1000);
+}
+
+// Listen for Disboard bump confirmation
+client.on(Events.MessageCreate, async (message) => {
+  if (
+    message.author.id === "302050872383242240" &&
+    message.embeds.length > 0 &&
+    message.embeds[0]?.description?.includes("Bump done")
+  ) {
+    console.log("✅ Bump detected! Resetting timer to 2 hours.");
+
+    // Delete Disboard's own confirmation message for a cleaner channel
+    try { await message.delete(); } catch (_) {}
+
+    await sendBumpSuccess(message.channel);
+
+    // Reset interval: remind again after 2 hours
+    clearInterval(reminderInterval);
+    setTimeout(() => {
+      sendBumpReminder();
+      reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
+    }, 2 * 60 * 60 * 1000);
+  }
+});
+
+client.once(Events.ClientReady, () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
-  console.log(`⏰ Will bump every 2 hours in channel: ${BUMP_CHANNEL_ID}`);
+  console.log(`⏰ Sending fancy bump reminders every 15 minutes.`);
 
-  // Send first bump immediately on startup
-  sendBump();
-
-  // Then bump every 2 hours
-  setInterval(sendBump, BUMP_INTERVAL_MS);
+  sendBumpReminder();
+  reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
 });
 
 client.login(TOKEN);
