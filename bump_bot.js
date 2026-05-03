@@ -10,22 +10,20 @@ const BUMP_CHANNEL_ID     = process.env.BUMP_CHANNEL_ID;
 const OWNER_ID            = process.env.OWNER_ID;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID; // Announcements channel
 const REVIEW_CHANNEL_ID   = process.env.REVIEW_CHANNEL_ID;   // #application-review channel
-const BUMP_COOLDOWN_MS   = 2 * 60 * 60 * 1000; // 2 hours
-const REMINDER_INTERVAL_MS = 15 * 60 * 1000;    // Poll every 15 min after cooldown
+const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMembers, // Needed to DM applicants
   ],
 });
 
 let reminderInterval;
-let lastBotMessage  = null;
-let stickyTimeout   = null;
-let lastBumpTime    = null;
+let lastBotMessage = null;
+let stickyTimeout  = null;
 
 // ── Crash protection ──────────────────────────────────────────────────────────
 process.on("unhandledRejection", (e) => console.error("⚠️ Unhandled rejection:", e?.message ?? e));
@@ -40,26 +38,20 @@ client.on(Events.ShardResume,       (id, n)   => console.log(`✅ Shard ${id} re
 //  BUMP SYSTEM
 // ═════════════════════════════════════════════════════════════════════════════
 
-// Deletes the previous bot message if it exists
-async function clearLastMessage() {
-  if (lastBotMessage) {
-    try { await lastBotMessage.delete(); } catch (_) {}
-    lastBotMessage = null;
-  }
-}
-
-// Ready to bump — cooldown has expired
 async function sendBumpReminder() {
   try {
     const channel = await client.channels.fetch(BUMP_CHANNEL_ID);
     if (!channel) return console.error("❌ Bump channel not found!");
 
-    await clearLastMessage();
+    if (lastBotMessage) {
+      try { await lastBotMessage.delete(); } catch (_) {}
+      lastBotMessage = null;
+    }
 
     const embed = new EmbedBuilder()
       .setTitle("🚀 Bump the Server!")
       .setDescription(
-        "**The cooldown is over — time to bump!**\n\n" +
+        "**Help us grow by bumping the server on Disboard!**\n\n" +
         "📌 **How to bump:**\n" +
         "> Type `/bump` in this channel\n" +
         "> Select **DISBOARD** from the bot list\n" +
@@ -69,7 +61,7 @@ async function sendBumpReminder() {
       )
       .setColor(0x5865f2)
       .setThumbnail("https://disboard.org/images/bot-command-image-disboard.png")
-      .setFooter({ text: "Cooldown is over — bump now!" })
+      .setFooter({ text: "Reminder sent every 15 minutes until bumped" })
       .setTimestamp();
 
     lastBotMessage = await channel.send({ embeds: [embed] });
@@ -79,27 +71,32 @@ async function sendBumpReminder() {
   }
 }
 
-// Just bumped — show live countdown using Discord's <t:timestamp:R> format
-async function sendCooldownMessage(channel) {
-  await clearLastMessage();
-
-  lastBumpTime = Date.now();
-  const readyAt = Math.floor((lastBumpTime + BUMP_COOLDOWN_MS) / 1000); // Unix seconds
+async function sendBumpSuccess(channel) {
+  if (lastBotMessage) {
+    try { await lastBotMessage.delete(); } catch (_) {}
+    lastBotMessage = null;
+  }
 
   const embed = new EmbedBuilder()
     .setTitle("✅ Server Bumped!")
     .setDescription(
-      "**Thanks for bumping! 🎉**\n\n" +
-      `⏳ **Next bump available:** <t:${readyAt}:R>\n` +
-      `🕐 **Ready at:** <t:${readyAt}:t>\n\n` +
-      "I'll ping when the cooldown is over. Keep an eye out! 👀"
+      "**Thanks for bumping the server!** 🎉\n\n" +
+      "The next reminder will be sent in **2 hours**.\n" +
+      "Keep up the great work helping the server grow! 💪"
     )
     .setColor(0x57f287)
-    .setFooter({ text: "Cooldown: 2 hours" })
+    .setFooter({ text: "Next reminder in 2 hours" })
     .setTimestamp();
 
-  lastBotMessage = await channel.send({ embeds: [embed] });
-  console.log(`✅ Cooldown message sent. Next bump <t:${readyAt}:R>`);
+  const sent = await channel.send({ embeds: [embed] });
+  lastBotMessage = sent;
+
+  setTimeout(async () => {
+    try {
+      await sent.delete();
+      if (lastBotMessage?.id === sent.id) lastBotMessage = null;
+    } catch (_) {}
+  }, 10 * 60 * 1000);
 }
 
 function isBumpSuccess(message) {
@@ -112,16 +109,13 @@ function isBumpSuccess(message) {
 }
 
 function handleBumpSuccess(channel) {
-  console.log("✅ Bump detected! Starting 2 hour cooldown.");
+  console.log("✅ Bump detected! Pausing reminders for 2 hours.");
   clearInterval(reminderInterval);
-
-  sendCooldownMessage(channel);
-
-  // After 2 hours send the reminder, then poll every 15 min if missed
+  sendBumpSuccess(channel);
   setTimeout(() => {
     sendBumpReminder();
     reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
-  }, BUMP_COOLDOWN_MS);
+  }, 2 * 60 * 60 * 1000);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -144,6 +138,7 @@ async function postModApplication() {
         {
           name: "📋 Requirements",
           value: [
+            "• Member for **at least 2 weeks**",
             "• **Consistently active** in the server",
             "• **No recent warnings** or rule violations",
             "• Must be **13 years or older**",
@@ -176,6 +171,7 @@ async function postModApplication() {
             "• Providing false info will result in a **permanent ban**",
             "• Applications are reviewed **privately** by the staff team",
             "• You will be **DMed** with the outcome",
+            "• Do **not** DM staff asking about your application",
           ].join("\n"),
         }
       )
@@ -190,7 +186,7 @@ async function postModApplication() {
         .setStyle(ButtonStyle.Primary),
     );
 
-    await channel.send({ content: "@everyone", embeds: [embed], components: [row] });
+    await channel.send({ embeds: [embed], components: [row] });
     console.log("✅ Mod application post sent to announcements!");
   } catch (e) {
     console.error("❌ Failed to post mod application:", e.message);
