@@ -138,7 +138,6 @@ async function postModApplication() {
         {
           name: "📋 Requirements",
           value: [
-            "• Member for **at least 2 weeks**",
             "• **Consistently active** in the server",
             "• **No recent warnings** or rule violations",
             "• Must be **13 years or older**",
@@ -171,7 +170,6 @@ async function postModApplication() {
             "• Providing false info will result in a **permanent ban**",
             "• Applications are reviewed **privately** by the staff team",
             "• You will be **DMed** with the outcome",
-            "• Do **not** DM staff asking about your application",
           ].join("\n"),
         }
       )
@@ -186,7 +184,7 @@ async function postModApplication() {
         .setStyle(ButtonStyle.Primary),
     );
 
-    await channel.send({ embeds: [embed], components: [row] });
+    await channel.send({ content: "@everyone", embeds: [embed], components: [row] });
     console.log("✅ Mod application post sent to announcements!");
   } catch (e) {
     console.error("❌ Failed to post mod application:", e.message);
