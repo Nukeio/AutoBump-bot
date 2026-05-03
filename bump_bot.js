@@ -2,6 +2,7 @@ const { Client, GatewayIntentBits, Events, EmbedBuilder, Colors } = require("dis
 
 const TOKEN = process.env.BOT_TOKEN;
 const BUMP_CHANNEL_ID = process.env.BUMP_CHANNEL_ID;
+const OWNER_ID = process.env.OWNER_ID; // Your Discord user ID
 const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
 
 const client = new Client({
@@ -122,6 +123,20 @@ function handleBumpSuccess(channel) {
 
 // Catch regular messages from Disboard (older behavior)
 client.on(Events.MessageCreate, async (message) => {
+  if (message.author.bot) return;
+
+  // Manual trigger: only you (OWNER_ID) can run !remind
+  if (message.content.trim() === "!remind") {
+    if (message.author.id !== OWNER_ID) {
+      const reply = await message.reply("❌ You don't have permission to do that.");
+      setTimeout(() => reply.delete().catch(() => {}), 5000);
+      return;
+    }
+    try { await message.delete(); } catch (_) {}
+    await sendBumpReminder();
+    return;
+  }
+
   if (isBumpSuccess(message)) {
     try { await message.delete(); } catch (_) {}
     handleBumpSuccess(message.channel);
