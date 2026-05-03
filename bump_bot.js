@@ -10,20 +10,22 @@ const BUMP_CHANNEL_ID     = process.env.BUMP_CHANNEL_ID;
 const OWNER_ID            = process.env.OWNER_ID;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID; // Announcements channel
 const REVIEW_CHANNEL_ID   = process.env.REVIEW_CHANNEL_ID;   // #application-review channel
-const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const BUMP_COOLDOWN_MS   = 2 * 60 * 60 * 1000; // 2 hours
+const REMINDER_INTERVAL_MS = 15 * 60 * 1000;    // Poll every 15 min after cooldown
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers, // Needed to DM applicants
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
 let reminderInterval;
-let lastBotMessage = null;
-let stickyTimeout  = null;
+let lastBotMessage  = null;
+let stickyTimeout   = null;
+let lastBumpTime    = null;
 
 // ── Crash protection ──────────────────────────────────────────────────────────
 process.on("unhandledRejection", (e) => console.error("⚠️ Unhandled rejection:", e?.message ?? e));
@@ -38,20 +40,26 @@ client.on(Events.ShardResume,       (id, n)   => console.log(`✅ Shard ${id} re
 //  BUMP SYSTEM
 // ═════════════════════════════════════════════════════════════════════════════
 
+// Deletes the previous bot message if it exists
+async function clearLastMessage() {
+  if (lastBotMessage) {
+    try { await lastBotMessage.delete(); } catch (_) {}
+    lastBotMessage = null;
+  }
+}
+
+// Ready to bump — cooldown has expired
 async function sendBumpReminder() {
   try {
     const channel = await client.channels.fetch(BUMP_CHANNEL_ID);
     if (!channel) return console.error("❌ Bump channel not found!");
 
-    if (lastBotMessage) {
-      try { await lastBotMessage.delete(); } catch (_) {}
-      lastBotMessage = null;
-    }
+    await clearLastMessage();
 
     const embed = new EmbedBuilder()
       .setTitle("🚀 Bump the Server!")
       .setDescription(
-        "**Help us grow by bumping the server on Disboard!**\n\n" +
+        "**The cooldown is over — time to bump!**\n\n" +
         "📌 **How to bump:**\n" +
         "> Type `/bump` in this channel\n" +
         "> Select **DISBOARD** from the bot list\n" +
@@ -61,7 +69,7 @@ async function sendBumpReminder() {
       )
       .setColor(0x5865f2)
       .setThumbnail("https://disboard.org/images/bot-command-image-disboard.png")
-      .setFooter({ text: "Reminder sent every 15 minutes until bumped" })
+      .setFooter({ text: "Cooldown is over — bump now!" })
       .setTimestamp();
 
     lastBotMessage = await channel.send({ embeds: [embed] });
@@ -71,32 +79,27 @@ async function sendBumpReminder() {
   }
 }
 
-async function sendBumpSuccess(channel) {
-  if (lastBotMessage) {
-    try { await lastBotMessage.delete(); } catch (_) {}
-    lastBotMessage = null;
-  }
+// Just bumped — show live countdown using Discord's <t:timestamp:R> format
+async function sendCooldownMessage(channel) {
+  await clearLastMessage();
+
+  lastBumpTime = Date.now();
+  const readyAt = Math.floor((lastBumpTime + BUMP_COOLDOWN_MS) / 1000); // Unix seconds
 
   const embed = new EmbedBuilder()
     .setTitle("✅ Server Bumped!")
     .setDescription(
-      "**Thanks for bumping the server!** 🎉\n\n" +
-      "The next reminder will be sent in **2 hours**.\n" +
-      "Keep up the great work helping the server grow! 💪"
+      "**Thanks for bumping! 🎉**\n\n" +
+      `⏳ **Next bump available:** <t:${readyAt}:R>\n` +
+      `🕐 **Ready at:** <t:${readyAt}:t>\n\n` +
+      "I'll ping when the cooldown is over. Keep an eye out! 👀"
     )
     .setColor(0x57f287)
-    .setFooter({ text: "Next reminder in 2 hours" })
+    .setFooter({ text: "Cooldown: 2 hours" })
     .setTimestamp();
 
-  const sent = await channel.send({ embeds: [embed] });
-  lastBotMessage = sent;
-
-  setTimeout(async () => {
-    try {
-      await sent.delete();
-      if (lastBotMessage?.id === sent.id) lastBotMessage = null;
-    } catch (_) {}
-  }, 10 * 60 * 1000);
+  lastBotMessage = await channel.send({ embeds: [embed] });
+  console.log(`✅ Cooldown message sent. Next bump <t:${readyAt}:R>`);
 }
 
 function isBumpSuccess(message) {
@@ -109,13 +112,16 @@ function isBumpSuccess(message) {
 }
 
 function handleBumpSuccess(channel) {
-  console.log("✅ Bump detected! Pausing reminders for 2 hours.");
+  console.log("✅ Bump detected! Starting 2 hour cooldown.");
   clearInterval(reminderInterval);
-  sendBumpSuccess(channel);
+
+  sendCooldownMessage(channel);
+
+  // After 2 hours send the reminder, then poll every 15 min if missed
   setTimeout(() => {
     sendBumpReminder();
     reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
-  }, 2 * 60 * 60 * 1000);
+  }, BUMP_COOLDOWN_MS);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
