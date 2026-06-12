@@ -27,6 +27,7 @@ const client = new Client({
 let reminderInterval;
 let lastBotMessage = null;
 let stickyTimeout  = null;
+const activeTriviaAnswers = new Map(); // Tracks active trivia sessions by message ID
 
 // ── Crash protection ──────────────────────────────────────────────────────────
 process.on("unhandledRejection", (e) => console.error("⚠️ Unhandled rejection:", e?.message ?? e));
