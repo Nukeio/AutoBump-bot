@@ -35,6 +35,19 @@ client.on(Events.ShardReconnecting, (id)      => console.log(`🔄 Shard ${id} r
 client.on(Events.ShardResume,       (id, n)   => console.log(`✅ Shard ${id} resumed (${n} events).`));
 
 // ═════════════════════════════════════════════════════════════════════════════
+//  WAKE-UP COMMAND
+// ═════════════════════════════════════════════════════════════════════════════
+
+const WAKEUP_MESSAGES = [
+  "👀 **Ayo, is anyone alive in here?!**",
+  "💀 **This chat is deader than my sleep schedule.**",
+  "🔔 **WAKE UP GANG. Let's get it going!**",
+  "😴 **Y'all really just gonna let this chat die like that?**",
+  "🚨 **ALERT: Chat emergency detected. Immediate vibes required.**",
+  "🎯 **Attention all members: it's time to be perceived.**",
+];
+
+// ═════════════════════════════════════════════════════════════════════════════
 //  BUMP SYSTEM
 // ═════════════════════════════════════════════════════════════════════════════
 
@@ -359,6 +372,31 @@ client.on(Events.MessageCreate, async (message) => {
     if (message.content.trim() === "!modapp") {
       try { await message.delete(); } catch (_) {}
       await postModApplication();
+      return;
+    }
+
+    // !wakeup [optional message] — ping @everyone to revive dead chat
+    if (message.content.trim().startsWith("!wakeup")) {
+      const customText = message.content.slice("!wakeup".length).trim();
+      const randomLine = WAKEUP_MESSAGES[Math.floor(Math.random() * WAKEUP_MESSAGES.length)];
+
+      const embed = new EmbedBuilder()
+        .setColor(0xFF4444)
+        .setTitle("📣 WAKE UP CALL")
+        .setDescription(
+          `${randomLine}\n\n` +
+          (customText ? `> ${customText}\n\n` : "") +
+          `Drop a message, react, say anything — just let us know you're breathing. 💬`
+        )
+        .setFooter({ text: "Don't let the chat die. You're better than this." })
+        .setTimestamp();
+
+      try {
+        await message.delete();
+        await message.channel.send({ content: "@everyone", embeds: [embed] });
+      } catch (e) {
+        console.error("❌ Wake-up command failed:", e?.message ?? e);
+      }
       return;
     }
   }
