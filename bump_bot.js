@@ -11,8 +11,9 @@ const OWNER_ID            = process.env.OWNER_ID;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID; // Announcements channel
 const REVIEW_CHANNEL_ID   = process.env.REVIEW_CHANNEL_ID;   // #application-review channel
 const ENGAGE_CHANNEL_ID   = process.env.ENGAGE_CHANNEL_ID;   // #trivia-and-prompts channel
+const GIPHY_API_KEY       = process.env.GIPHY_API_KEY;        // Giphy API key for prompt GIFs
 const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-const DAILY_HOUR = 18; // Auto-post time: 6 PM (server local time, 24h format)
+const ENGAGE_INTERVAL_MS   = 60 * 60 * 1000; // 1 hour
 
 const client = new Client({
   intents: [
@@ -53,42 +54,96 @@ const WAKEUP_MESSAGES = [
 //  TRIVIA & CHAT PROMPT SYSTEM
 // ═════════════════════════════════════════════════════════════════════════════
 
-const TRIVIA_QUESTIONS = [
-  // 🎮 Gaming
-  { q: "Which game franchise features a hero named 'Link'?", options: ["Zelda", "Mario", "Metroid", "Kirby"], answer: 0, category: "🎮 Gaming" },
-  { q: "What is the best-selling video game of all time (as of 2024)?", options: ["Minecraft", "Tetris", "GTA V", "Wii Sports"], answer: 0, category: "🎮 Gaming" },
-  { q: "In what year was the first PlayStation released in Japan?", options: ["1994", "1996", "1992", "1998"], answer: 0, category: "🎮 Gaming" },
-  { q: "Which game studio made 'Elden Ring'?", options: ["FromSoftware", "Bandai Namco", "Square Enix", "CD Projekt Red"], answer: 0, category: "🎮 Gaming" },
-  { q: "What color is the 'Impostor' in Among Us by default?", options: ["Red", "Blue", "Black", "Any color"], answer: 3, category: "🎮 Gaming" },
-  { q: "Which battle royale game is known for its building mechanic?", options: ["Fortnite", "PUBG", "Warzone", "Apex Legends"], answer: 0, category: "🎮 Gaming" },
-  { q: "What does 'NPC' stand for in gaming?", options: ["Non-Player Character", "New Playable Content", "Non-Playable Config", "Normal Player Control"], answer: 0, category: "🎮 Gaming" },
-  { q: "In Minecraft, what material is needed to make a Nether portal?", options: ["Obsidian", "Diamond", "Iron", "Blackstone"], answer: 0, category: "🎮 Gaming" },
+// ═════════════════════════════════════════════════════════════════════════════
+//  TRIVIA & CHAT PROMPT SYSTEM  (powered by Open Trivia DB)
+// ═════════════════════════════════════════════════════════════════════════════
 
-  // 🎌 Anime
-  { q: "What is the name of the main character in 'Naruto'?", options: ["Naruto Uzumaki", "Sasuke Uchiha", "Kakashi Hatake", "Boruto Uzumaki"], answer: 0, category: "🎌 Anime" },
-  { q: "Which anime features the 'Survey Corps'?", options: ["Attack on Titan", "Demon Slayer", "My Hero Academia", "Jujutsu Kaisen"], answer: 0, category: "🎌 Anime" },
-  { q: "What is the power system in 'Hunter x Hunter' called?", options: ["Nen", "Chakra", "Quirk", "Haki"], answer: 0, category: "🎌 Anime" },
-  { q: "Who is the author of 'One Piece'?", options: ["Eiichiro Oda", "Masashi Kishimoto", "Akira Toriyama", "Hajime Isayama"], answer: 0, category: "🎌 Anime" },
-  { q: "In Dragon Ball Z, what level of Super Saiyan did Gohan first reach?", options: ["Super Saiyan 2", "Super Saiyan 1", "Super Saiyan 3", "Super Saiyan God"], answer: 0, category: "🎌 Anime" },
-  { q: "What school does Izuku Midoriya attend in My Hero Academia?", options: ["U.A. High School", "Shiketsu High School", "Ketsubutsu High School", "Seiai Academy"], answer: 0, category: "🎌 Anime" },
-  { q: "What is the name of the sword style used by Roronoa Zoro?", options: ["Santoryu", "Nitoryu", "Ittoryu", "Yontoryu"], answer: 0, category: "🎌 Anime" },
-  { q: "In Jujutsu Kaisen, what is Gojo Satoru's special technique called?", options: ["Infinity", "Domain Expansion", "Black Flash", "Divergent Fist"], answer: 0, category: "🎌 Anime" },
+// OpenTDB category IDs we want: 9=General, 11=Film, 12=Music, 14=TV, 15=Games, 31=Anime/Manga
+const OPENTDB_CATEGORIES = [9, 11, 12, 14, 15, 31];
+const CATEGORY_LABELS = {
+  9:  "🌍 General Knowledge",
+  11: "🎬 Entertainment: Film",
+  12: "🎵 Entertainment: Music",
+  14: "📺 Entertainment: TV",
+  15: "🎮 Entertainment: Games",
+  31: "🎌 Entertainment: Anime & Manga",
+};
 
-  // 🌍 General Knowledge
-  { q: "What is the capital city of Japan?", options: ["Tokyo", "Osaka", "Kyoto", "Hiroshima"], answer: 0, category: "🌍 General Knowledge" },
-  { q: "How many sides does a hexagon have?", options: ["6", "5", "7", "8"], answer: 0, category: "🌍 General Knowledge" },
-  { q: "What planet is known as the Red Planet?", options: ["Mars", "Jupiter", "Saturn", "Venus"], answer: 0, category: "🌍 General Knowledge" },
-  { q: "What is the chemical symbol for gold?", options: ["Au", "Ag", "Go", "Gd"], answer: 0, category: "🌍 General Knowledge" },
-  { q: "Who painted the Mona Lisa?", options: ["Leonardo da Vinci", "Michelangelo", "Raphael", "Picasso"], answer: 0, category: "🌍 General Knowledge" },
-  { q: "What is the largest ocean on Earth?", options: ["Pacific", "Atlantic", "Indian", "Arctic"], answer: 0, category: "🌍 General Knowledge" },
-  { q: "How many bones are in the adult human body?", options: ["206", "196", "216", "186"], answer: 0, category: "🌍 General Knowledge" },
-  { q: "What language has the most native speakers in the world?", options: ["Mandarin Chinese", "Spanish", "English", "Hindi"], answer: 0, category: "🌍 General Knowledge" },
-];
+let opentdbToken = null; // Session token — prevents repeated questions
+
+// Decode HTML entities returned by OpenTDB (e.g. &amp; &#039; &quot;)
+function decodeHTML(str) {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&ldquo;/g, "\u201C")
+    .replace(/&rdquo;/g, "\u201D")
+    .replace(/&lsquo;/g, "\u2018")
+    .replace(/&rsquo;/g, "\u2019")
+    .replace(/&hellip;/g, "…")
+    .replace(/&ndash;/g, "–")
+    .replace(/&mdash;/g, "—");
+}
+
+// Get or refresh a session token from OpenTDB
+async function getOpentdbToken() {
+  try {
+    const res  = await fetch("https://opentdb.com/api_token.php?command=request");
+    const data = await res.json();
+    if (data.response_code === 0) {
+      opentdbToken = data.token;
+      console.log("🔑 OpenTDB session token obtained.");
+    }
+  } catch (e) {
+    console.error("❌ Failed to get OpenTDB token:", e.message);
+  }
+}
+
+// Fetch one random trivia question from OpenTDB
+async function fetchTriviaQuestion() {
+  const catId = OPENTDB_CATEGORIES[Math.floor(Math.random() * OPENTDB_CATEGORIES.length)];
+  const tokenParam = opentdbToken ? `&token=${opentdbToken}` : "";
+  const url = `https://opentdb.com/api.php?amount=1&type=multiple&category=${catId}${tokenParam}`;
+
+  const res  = await fetch(url);
+  const data = await res.json();
+
+  // Token exhausted — reset and retry once
+  if (data.response_code === 4) {
+    console.warn("⚠️ OpenTDB token exhausted, resetting...");
+    await fetch(`https://opentdb.com/api_token.php?command=reset&token=${opentdbToken}`);
+    return fetchTriviaQuestion();
+  }
+
+  if (data.response_code !== 0 || !data.results?.length) {
+    throw new Error(`OpenTDB returned code ${data.response_code}`);
+  }
+
+  const raw = data.results[0];
+  const question    = decodeHTML(raw.question);
+  const correct     = decodeHTML(raw.correct_answer);
+  const incorrects  = raw.incorrect_answers.map(decodeHTML);
+  const category    = CATEGORY_LABELS[catId] ?? "🧠 Trivia";
+  const difficulty  = raw.difficulty.charAt(0).toUpperCase() + raw.difficulty.slice(1);
+
+  // Shuffle correct answer into random position
+  const allAnswers = [...incorrects, correct];
+  for (let i = allAnswers.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [allAnswers[i], allAnswers[j]] = [allAnswers[j], allAnswers[i]];
+  }
+  const correctIndex = allAnswers.indexOf(correct);
+
+  return { question, correct, allAnswers, correctIndex, category, difficulty, catId };
+}
 
 const CHAT_PROMPTS = [
+  // 🎮 Gaming
   "🎮 **What game could you play for 24 hours straight without getting bored?**",
   "🏆 **What's your biggest gaming achievement you're actually proud of?**",
-  "🎌 **Which anime character do you relate to the most and why?**",
   "💀 **What's the hardest game you've ever beaten?**",
   "🎵 **Do you listen to music while gaming? Drop your go-to playlist genre!**",
   "🌙 **Are you a night owl or early bird gamer?**",
@@ -97,92 +152,209 @@ const CHAT_PROMPTS = [
   "😤 **What's the most tilting thing that can happen in a game?**",
   "🏅 **If you could be a pro gamer in any game, which would you pick?**",
   "📱 **Mobile gamer or console/PC? Defend your choice.**",
-  "🎭 **If your life was an anime, what genre would it be?**",
   "🌟 **What's an underrated game you think everyone should play?**",
   "👾 **What was the first video game you ever played?**",
   "🍕 **What's your go-to snack when you're gaming?**",
   "⚔️ **RPG, FPS, or Strategy — which genre is the GOAT?**",
-  "🎬 **Which anime deserves a proper video game adaptation?**",
   "💭 **Hot take: drop your most controversial gaming opinion.**",
+  "🗺️ **Open world or linear story? Which do you prefer?**",
+  "😱 **What game genuinely scared you the most?**",
+  "🏚️ **What's a game you keep going back to no matter how old it is?**",
+  "💸 **What's the most money you've ever spent on a game or in-game purchases?**",
+  "🎯 **Are you a completionist or do you rush the main story?**",
+  "🧠 **What game do you think has the best storyline ever?**",
+  "🎤 **Which game has the best soundtrack in your opinion?**",
+  "🤯 **What game mechanic blew your mind the first time you saw it?**",
+  "👑 **Who's your all-time favourite video game character?**",
+  "😂 **What's the funniest or most embarrassing gaming moment you've had?**",
+  "🔫 **What's your loadout in your favourite shooter right now?**",
+  "⚡ **Speed run or chill playthrough — how do you play?**",
+  "🌐 **If you could live inside any game world, which one would you pick?**",
+
+  // 🎌 Anime & Manga
+  "🎌 **Which anime character do you relate to the most and why?**",
+  "🎬 **Which anime deserves a proper video game adaptation?**",
+  "🎭 **If your life was an anime, what genre would it be?**",
+  "⚡ **Which anime power/ability would you want in real life?**",
+  "😭 **Which anime moment hit you the hardest emotionally?**",
+  "🔥 **What's your favourite anime fight scene of all time?**",
+  "📺 **Currently watching any anime? Drop your recommendations!**",
+  "🏆 **Top 3 anime of all time — go!**",
+  "🤔 **Most overrated anime according to you?**",
+  "🌟 **Which anime do you think is criminally underrated?**",
+  "🎵 **What's the best anime opening song ever made?**",
+  "💬 **Sub or dub — and why?**",
+  "🦹 **Favourite anime villain and why?**",
+  "📖 **Manga or anime — which do you prefer?**",
+  "🏅 **If you could join any anime school or academy, which one?**",
+
+  // 🌍 Community & Fun
+  "☀️ **What's one thing that always puts you in a good mood?**",
+  "🌍 **If you could travel anywhere in the world right now, where would you go?**",
+  "🍔 **What's your go-to comfort food?**",
+  "🧠 **What's a random fact you know that most people don't?**",
+  "😴 **What's your sleep schedule like? Night owl or early bird?**",
+  "📱 **What app do you spend the most time on besides Discord?**",
+  "🎶 **What song is stuck in your head right now?**",
+  "💡 **If you could have one superpower, what would it be?**",
+  "📚 **Are you currently learning anything new? What is it?**",
+  "🤩 **Who's someone you genuinely look up to and why?**",
+  "😤 **What's your biggest pet peeve?**",
+  "🐾 **Dogs, cats, or other — what's your favourite pet?**",
+  "🌙 **What's the latest you've ever stayed up and why?**",
+  "🎂 **What would your dream birthday be like?**",
+  "🚀 **If you could have any job in the world, what would it be?**",
 ];
 
-// Track active trivia to prevent double-answering
-const activeTriviaAnswers = new Map(); // messageId → Set of userIds who answered
+// ── Category thumbnail images for trivia (static, themed per category) ───────
+const CATEGORY_IMAGES = {
+  9:  "https://i.imgur.com/1yDzJpN.png",   // 🌍 General Knowledge — globe/quiz
+  11: "https://i.imgur.com/AxPCwYS.png",   // 🎬 Film — clapperboard
+  12: "https://i.imgur.com/NwXkxJv.png",   // 🎵 Music — musical notes
+  14: "https://i.imgur.com/lKs3nqY.png",   // 📺 TV — television
+  15: "https://i.imgur.com/ZQvtFSS.png",   // 🎮 Games — controller
+  31: "https://i.imgur.com/OyIBDKG.png",   // 🎌 Anime — sakura/anime style
+};
 
-function getRandomTrivia() {
-  return TRIVIA_QUESTIONS[Math.floor(Math.random() * TRIVIA_QUESTIONS.length)];
+// ── Giphy fetch for prompts ───────────────────────────────────────────────────
+// Maps prompt emoji prefix → Giphy search term
+const PROMPT_GIPHY_TAGS = {
+  "🎮": "gaming",
+  "🏆": "victory gaming",
+  "💀": "game over",
+  "🎵": "music gaming",
+  "🌙": "night gaming",
+  "🤝": "multiplayer gaming",
+  "🔥": "epic gaming",
+  "😤": "rage gaming",
+  "🏅": "pro gamer",
+  "📱": "mobile gaming",
+  "🌟": "awesome game",
+  "👾": "retro gaming",
+  "🍕": "gaming snack",
+  "⚔️": "rpg fantasy",
+  "💭": "thinking anime",
+  "🗺️": "open world game",
+  "😱": "scary game",
+  "🏚️": "classic game",
+  "💸": "spending money",
+  "🎯": "achievement unlocked",
+  "🧠": "big brain anime",
+  "🎤": "game music",
+  "🤯": "mind blown anime",
+  "👑": "anime hero",
+  "😂": "laughing anime",
+  "🔫": "fps gaming",
+  "⚡": "speedrun gaming",
+  "🌐": "game world",
+  "🎌": "anime",
+  "🎬": "anime action",
+  "🎭": "anime genre",
+  "😭": "anime sad",
+  "📺": "anime watching",
+  "🤔": "anime thinking",
+  "🎵": "anime music",
+  "💬": "anime talking",
+  "🦹": "anime villain",
+  "📖": "manga reading",
+  "☀️": "happy anime",
+  "🌍": "travel adventure",
+  "🍔": "food anime",
+  "😴": "sleepy anime",
+  "📱": "phone anime",
+  "🎶": "music anime",
+  "💡": "idea anime",
+  "📚": "studying anime",
+  "🤩": "excited anime",
+  "🐾": "cute anime animal",
+  "🎂": "anime celebration",
+  "🚀": "anime dream",
+};
+
+async function fetchGiphyGif(searchTerm) {
+  if (!GIPHY_API_KEY) return null;
+  try {
+    const offset = Math.floor(Math.random() * 20); // random result from top 20
+    const url = `https://api.giphy.com/v1/gifs/search?api_key=${GIPHY_API_KEY}&q=${encodeURIComponent(searchTerm)}&limit=1&offset=${offset}&rating=g&lang=en`;
+    const res  = await fetch(url);
+    const data = await res.json();
+    return data?.data?.[0]?.images?.original?.url ?? null;
+  } catch (e) {
+    console.error("❌ Giphy fetch failed:", e.message);
+    return null;
+  }
 }
 
-function getRandomPrompt() {
-  return CHAT_PROMPTS[Math.floor(Math.random() * CHAT_PROMPTS.length)];
-}
+
+
+// Hourly toggle: even hours = trivia, odd hours = prompt
+let engageToggle = 0;
 
 async function sendTrivia(channel) {
   try {
-    const q = getRandomTrivia();
-    const labels = ["🇦", "🇧", "🇨", "🇩"];
+    const q = await fetchTriviaQuestion();
+    const labels  = ["🇦", "🇧", "🇨", "🇩"];
     const letters = ["A", "B", "C", "D"];
 
-    // Shuffle answer options but track correct answer
-    const indices = [0, 1, 2, 3];
-    for (let i = indices.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [indices[i], indices[j]] = [indices[j], indices[i]];
-    }
-    const shuffledOptions = indices.map(i => q.options[i]);
-    const correctShuffledIndex = indices.indexOf(q.answer);
-
-    const optionText = shuffledOptions
-      .map((opt, i) => `${labels[i]} ${opt}`)
-      .join("\n");
+    const optionText = q.allAnswers.map((opt, i) => `${labels[i]} ${opt}`).join("\n");
 
     const embed = new EmbedBuilder()
       .setTitle(`${q.category} Trivia! 🧠`)
-      .setDescription(`**${q.q}**\n\n${optionText}\n\n⏱️ *Answer within 30 seconds!*`)
+      .setDescription(`**${q.question}**\n\n${optionText}\n\n⏱️ *Answer within 60 seconds!*`)
       .setColor(0xf1c40f)
-      .setFooter({ text: "Click a button to answer • Only your first answer counts!" })
+      .addFields({ name: "Difficulty", value: q.difficulty, inline: true })
+      .setThumbnail(CATEGORY_IMAGES[q.catId] ?? CATEGORY_IMAGES[9])
+      .setFooter({ text: "Click a button to answer • Only your first answer counts! • Powered by OpenTDB" })
       .setTimestamp();
 
     const row = new ActionRowBuilder().addComponents(
-      ...letters.map((letter, i) =>
+      letters.map((letter, i) =>
         new ButtonBuilder()
-          .setCustomId(`trivia_${letter}_${correctShuffledIndex}`)
+          .setCustomId(`trivia_${letter}_${q.correctIndex}`)
           .setLabel(letter)
           .setStyle(ButtonStyle.Primary)
       )
     );
 
     const msg = await channel.send({ embeds: [embed], components: [row] });
-    activeTriviaAnswers.set(msg.id, { correct: correctShuffledIndex, voters: new Set(), correctUsers: [], wrongUsers: [] });
+    activeTriviaAnswers.set(msg.id, {
+      correctIndex: q.correctIndex,
+      voters: new Set(),
+      correctUsers: [],
+      wrongUsers: [],
+      allAnswers: q.allAnswers,
+      question: q.question,
+      category: q.category,
+    });
 
-    // Reveal answer after 30 seconds
+    // Reveal answer after 60 seconds
     setTimeout(async () => {
       try {
         const data = activeTriviaAnswers.get(msg.id);
+        if (!data) return;
         activeTriviaAnswers.delete(msg.id);
 
-        const correctAnswer = shuffledOptions[correctShuffledIndex];
+        const correctAnswer = data.allAnswers[data.correctIndex];
         const correctList = data.correctUsers.length
           ? data.correctUsers.map(u => `<@${u}>`).join(", ")
           : "Nobody got it right! 😬";
 
         const resultEmbed = new EmbedBuilder()
-          .setTitle(`${q.category} Trivia — Results! 🏁`)
-          .setDescription(`**${q.q}**\n\n✅ **Correct Answer: ${labels[correctShuffledIndex]} ${correctAnswer}**`)
+          .setTitle(`${data.category} Trivia — Results! 🏁`)
+          .setDescription(`**${data.question}**\n\n✅ **Correct Answer: ${labels[data.correctIndex]} ${correctAnswer}**`)
           .addFields(
             { name: "🏆 Got it right", value: correctList, inline: false },
-            { name: "📊 Total answers", value: `${data.voters.size} member(s) answered`, inline: false },
+            { name: "📊 Responses", value: `${data.voters.size} member(s) answered`, inline: false },
           )
           .setColor(0x57f287)
           .setTimestamp();
 
-        // Disable all buttons
         const disabledRow = new ActionRowBuilder().addComponents(
-          ...letters.map((letter, i) =>
+          letters.map((letter, i) =>
             new ButtonBuilder()
               .setCustomId(`trivia_done_${i}`)
-              .setLabel(`${letter}${i === correctShuffledIndex ? " ✓" : ""}`)
-              .setStyle(i === correctShuffledIndex ? ButtonStyle.Success : ButtonStyle.Secondary)
+              .setLabel(`${letter}${i === data.correctIndex ? " ✓" : ""}`)
+              .setStyle(i === data.correctIndex ? ButtonStyle.Success : ButtonStyle.Secondary)
               .setDisabled(true)
           )
         );
@@ -191,9 +363,9 @@ async function sendTrivia(channel) {
       } catch (e) {
         console.error("❌ Trivia reveal failed:", e.message);
       }
-    }, 30_000);
+    }, 60_000);
 
-    console.log(`🧠 Trivia posted: ${q.q}`);
+    console.log(`🧠 Trivia posted: ${q.question}`);
   } catch (e) {
     console.error("❌ Failed to send trivia:", e.message);
   }
@@ -201,51 +373,48 @@ async function sendTrivia(channel) {
 
 async function sendChatPrompt(channel) {
   try {
-    const prompt = getRandomPrompt();
+    const prompt = CHAT_PROMPTS[Math.floor(Math.random() * CHAT_PROMPTS.length)];
+
+    // Detect the leading emoji to pick a Giphy search term
+    const leadingEmoji = [...prompt][0]; // first character (emoji)
+    const searchTerm   = PROMPT_GIPHY_TAGS[leadingEmoji] ?? "anime gaming";
+    const gifUrl       = await fetchGiphyGif(searchTerm);
 
     const embed = new EmbedBuilder()
       .setTitle("💬 Chat Prompt!")
       .setDescription(prompt + "\n\n*Drop your answer below — let's see what everyone thinks!* 👇")
       .setColor(0xe91e8c)
-      .setFooter({ text: "Magic Tiles 3 Community • Daily Prompt" })
+      .setFooter({ text: "Magic Tiles 3 Community • Hourly Prompt" })
       .setTimestamp();
 
+    if (gifUrl) embed.setImage(gifUrl);
+
     await channel.send({ embeds: [embed] });
-    console.log(`💬 Chat prompt posted.`);
+    console.log(`💬 Chat prompt posted${gifUrl ? " with GIF" : " (no GIF)"}.`);
   } catch (e) {
     console.error("❌ Failed to send prompt:", e.message);
   }
 }
 
-// ── Daily auto-scheduler ──────────────────────────────────────────────────────
-function scheduleDailyEngagement() {
-  const now = new Date();
-  const next = new Date();
-  next.setHours(DAILY_HOUR, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1); // push to tomorrow if past time
-
-  const msUntil = next - now;
-  console.log(`📅 Daily engagement scheduled in ${Math.round(msUntil / 60000)} minutes.`);
-
-  setTimeout(async () => {
+// ── Hourly auto-scheduler ─────────────────────────────────────────────────────
+function scheduleHourlyEngagement() {
+  setInterval(async () => {
     try {
       const channel = await client.channels.fetch(ENGAGE_CHANNEL_ID);
       if (!channel) return console.error("❌ Engage channel not found!");
 
-      // Alternate between trivia and prompt each day
-      const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86_400_000);
-      if (dayOfYear % 2 === 0) {
+      engageToggle++;
+      if (engageToggle % 2 === 1) {
         await sendTrivia(channel);
       } else {
         await sendChatPrompt(channel);
       }
     } catch (e) {
-      console.error("❌ Daily engagement failed:", e.message);
+      console.error("❌ Hourly engagement failed:", e.message);
     }
+  }, ENGAGE_INTERVAL_MS);
 
-    // Reschedule for next day
-    scheduleDailyEngagement();
-  }, msUntil);
+  console.log(`⏰ Hourly engagement scheduler started (trivia & prompts alternating every hour).`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -258,8 +427,9 @@ async function sendBumpReminder() {
     if (!channel) return console.error("❌ Bump channel not found!");
 
     if (lastBotMessage) {
-      try { await lastBotMessage.delete(); } catch (_) {}
-      lastBotMessage = null;
+      const old = lastBotMessage;
+      lastBotMessage = null; // clear before await so re-entrant calls don't double-delete
+      try { await old.delete(); } catch (_) {}
     }
 
     const embed = new EmbedBuilder()
@@ -647,12 +817,11 @@ client.on(Events.MessageCreate, async (message) => {
   // Sticky — repost reminder to bottom when someone chats
   if (lastBotMessage) {
     clearTimeout(stickyTimeout);
+    const msgToDelete = lastBotMessage; // capture reference before it can change
+    lastBotMessage = null;              // clear immediately so double-triggers don't stack
     stickyTimeout = setTimeout(async () => {
-      try {
-        await lastBotMessage.delete();
-        lastBotMessage = null;
-        await sendBumpReminder();
-      } catch (_) {}
+      try { await msgToDelete.delete(); } catch (_) {}
+      await sendBumpReminder();
     }, 3000);
   }
 });
@@ -692,7 +861,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     data.voters.add(interaction.user.id);
-    const isCorrect = chosenIndex === correctIndex;
+    const isCorrect = chosenIndex === data.correctIndex;
     if (isCorrect) {
       data.correctUsers.push(interaction.user.id);
     } else {
@@ -736,7 +905,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 //  READY
 // ═════════════════════════════════════════════════════════════════════════════
 
-client.once(Events.ClientReady, () => {
+client.once(Events.ClientReady, async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
   console.log(`⏰ Bump reminders every 15 minutes`);
   console.log(`📋 Mod app system ready — type !modapp to post`);
@@ -744,7 +913,9 @@ client.once(Events.ClientReady, () => {
 
   sendBumpReminder();
   reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
-  scheduleDailyEngagement();
+
+  await getOpentdbToken(); // Get OpenTDB session token on startup
+  scheduleHourlyEngagement();
 });
 
 client.login(TOKEN);
