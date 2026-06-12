@@ -310,7 +310,7 @@ async function sendTrivia(channel) {
     const row = new ActionRowBuilder().addComponents(
       letters.map((letter, i) =>
         new ButtonBuilder()
-          .setCustomId(`trivia_${letter}_${q.correctIndex}`)
+          .setCustomId(`trivia_${i}_${q.correctIndex}`)
           .setLabel(letter)
           .setStyle(ButtonStyle.Primary)
       )
@@ -844,11 +844,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   // ── Trivia answer buttons ─────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId.startsWith("trivia_") && !interaction.customId.startsWith("trivia_done_")) {
-    const parts = interaction.customId.split("_"); // ["trivia", "A"/"B"/"C"/"D", correctIndex]
-    const chosenLetter = parts[1];
+    const parts = interaction.customId.split("_"); // ["trivia", chosenIndex, correctIndex]
+    const chosenIndex  = parseInt(parts[1]);
     const correctIndex = parseInt(parts[2]);
     const letters = ["A", "B", "C", "D"];
-    const chosenIndex = letters.indexOf(chosenLetter);
 
     const data = activeTriviaAnswers.get(interaction.message.id);
 
