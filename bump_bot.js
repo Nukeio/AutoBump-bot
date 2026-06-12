@@ -851,10 +851,26 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const chosenIndex = letters.indexOf(chosenLetter);
 
     const data = activeTriviaAnswers.get(interaction.message.id);
+
+    // Bot restarted or trivia already ended — disable the buttons cleanly
     if (!data) {
-      await interaction.reply({ content: "⏱️ This trivia has already ended!", ephemeral: true });
+      try {
+        const disabledRow = new ActionRowBuilder().addComponents(
+          letters.map((letter, i) =>
+            new ButtonBuilder()
+              .setCustomId(`trivia_done_${i}`)
+              .setLabel(`${letter}${i === correctIndex ? " ✓" : ""}`)
+              .setStyle(i === correctIndex ? ButtonStyle.Success : ButtonStyle.Secondary)
+              .setDisabled(true)
+          )
+        );
+        await interaction.update({ components: [disabledRow] });
+      } catch (_) {
+        await interaction.reply({ content: "⏱️ This trivia session has already ended!", ephemeral: true }).catch(() => {});
+      }
       return;
     }
+
     if (data.voters.has(interaction.user.id)) {
       await interaction.reply({ content: "❌ You already answered this one!", ephemeral: true });
       return;
