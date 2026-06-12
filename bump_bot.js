@@ -831,6 +831,7 @@ client.on(Events.MessageCreate, async (message) => {
 // ═════════════════════════════════════════════════════════════════════════════
 
 client.on(Events.InteractionCreate, async (interaction) => {
+  try {
 
   // ── Disboard bump detection ───────────────────────────────────────────────
   if (!interaction.isCommand?.() && interaction.applicationId === "302050872383242240") {
@@ -849,7 +850,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     const correctIndex = parseInt(parts[2]);
     const letters = ["A", "B", "C", "D"];
 
+    console.log(`🎯 Trivia button clicked: customId=${interaction.customId} chosen=${chosenIndex} correct=${correctIndex} msgId=${interaction.message.id}`);
+
     const data = activeTriviaAnswers.get(interaction.message.id);
+    console.log(`📦 Trivia data found: ${!!data}, map size: ${activeTriviaAnswers.size}`);
 
     // Bot restarted or trivia already ended — disable the buttons cleanly
     if (!data) {
@@ -864,7 +868,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
           )
         );
         await interaction.update({ components: [disabledRow] });
-      } catch (_) {
+      } catch (e) {
+        console.error("❌ Failed to disable stale trivia buttons:", e.message);
         await interaction.reply({ content: "⏱️ This trivia session has already ended!", ephemeral: true }).catch(() => {});
       }
       return;
@@ -913,6 +918,18 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isButton() && interaction.customId.startsWith("app_deny_")) {
     await handleAppDecision(interaction, false);
     return;
+  }
+
+  } catch (e) {
+    console.error("❌ InteractionCreate error:", e?.message ?? e, "| customId:", interaction?.customId);
+    try {
+      const msg = "❌ Something went wrong. Please try again.";
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content: msg, ephemeral: true });
+      } else {
+        await interaction.reply({ content: msg, ephemeral: true });
+      }
+    } catch (_) {}
   }
 });
 
