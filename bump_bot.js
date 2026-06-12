@@ -10,7 +10,9 @@ const BUMP_CHANNEL_ID     = process.env.BUMP_CHANNEL_ID;
 const OWNER_ID            = process.env.OWNER_ID;
 const ANNOUNCE_CHANNEL_ID = process.env.ANNOUNCE_CHANNEL_ID; // Announcements channel
 const REVIEW_CHANNEL_ID   = process.env.REVIEW_CHANNEL_ID;   // #application-review channel
+const ENGAGE_CHANNEL_ID   = process.env.ENGAGE_CHANNEL_ID;   // #trivia-and-prompts channel
 const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
+const DAILY_HOUR = 18; // Auto-post time: 6 PM (server local time, 24h format)
 
 const client = new Client({
   intents: [
@@ -46,6 +48,205 @@ const WAKEUP_MESSAGES = [
   "🚨 **ALERT: Chat emergency detected. Immediate vibes required.**",
   "🎯 **Attention all members: it's time to be perceived.**",
 ];
+
+// ═════════════════════════════════════════════════════════════════════════════
+//  TRIVIA & CHAT PROMPT SYSTEM
+// ═════════════════════════════════════════════════════════════════════════════
+
+const TRIVIA_QUESTIONS = [
+  // 🎮 Gaming
+  { q: "Which game franchise features a hero named 'Link'?", options: ["Zelda", "Mario", "Metroid", "Kirby"], answer: 0, category: "🎮 Gaming" },
+  { q: "What is the best-selling video game of all time (as of 2024)?", options: ["Minecraft", "Tetris", "GTA V", "Wii Sports"], answer: 0, category: "🎮 Gaming" },
+  { q: "In what year was the first PlayStation released in Japan?", options: ["1994", "1996", "1992", "1998"], answer: 0, category: "🎮 Gaming" },
+  { q: "Which game studio made 'Elden Ring'?", options: ["FromSoftware", "Bandai Namco", "Square Enix", "CD Projekt Red"], answer: 0, category: "🎮 Gaming" },
+  { q: "What color is the 'Impostor' in Among Us by default?", options: ["Red", "Blue", "Black", "Any color"], answer: 3, category: "🎮 Gaming" },
+  { q: "Which battle royale game is known for its building mechanic?", options: ["Fortnite", "PUBG", "Warzone", "Apex Legends"], answer: 0, category: "🎮 Gaming" },
+  { q: "What does 'NPC' stand for in gaming?", options: ["Non-Player Character", "New Playable Content", "Non-Playable Config", "Normal Player Control"], answer: 0, category: "🎮 Gaming" },
+  { q: "In Minecraft, what material is needed to make a Nether portal?", options: ["Obsidian", "Diamond", "Iron", "Blackstone"], answer: 0, category: "🎮 Gaming" },
+
+  // 🎌 Anime
+  { q: "What is the name of the main character in 'Naruto'?", options: ["Naruto Uzumaki", "Sasuke Uchiha", "Kakashi Hatake", "Boruto Uzumaki"], answer: 0, category: "🎌 Anime" },
+  { q: "Which anime features the 'Survey Corps'?", options: ["Attack on Titan", "Demon Slayer", "My Hero Academia", "Jujutsu Kaisen"], answer: 0, category: "🎌 Anime" },
+  { q: "What is the power system in 'Hunter x Hunter' called?", options: ["Nen", "Chakra", "Quirk", "Haki"], answer: 0, category: "🎌 Anime" },
+  { q: "Who is the author of 'One Piece'?", options: ["Eiichiro Oda", "Masashi Kishimoto", "Akira Toriyama", "Hajime Isayama"], answer: 0, category: "🎌 Anime" },
+  { q: "In Dragon Ball Z, what level of Super Saiyan did Gohan first reach?", options: ["Super Saiyan 2", "Super Saiyan 1", "Super Saiyan 3", "Super Saiyan God"], answer: 0, category: "🎌 Anime" },
+  { q: "What school does Izuku Midoriya attend in My Hero Academia?", options: ["U.A. High School", "Shiketsu High School", "Ketsubutsu High School", "Seiai Academy"], answer: 0, category: "🎌 Anime" },
+  { q: "What is the name of the sword style used by Roronoa Zoro?", options: ["Santoryu", "Nitoryu", "Ittoryu", "Yontoryu"], answer: 0, category: "🎌 Anime" },
+  { q: "In Jujutsu Kaisen, what is Gojo Satoru's special technique called?", options: ["Infinity", "Domain Expansion", "Black Flash", "Divergent Fist"], answer: 0, category: "🎌 Anime" },
+
+  // 🌍 General Knowledge
+  { q: "What is the capital city of Japan?", options: ["Tokyo", "Osaka", "Kyoto", "Hiroshima"], answer: 0, category: "🌍 General Knowledge" },
+  { q: "How many sides does a hexagon have?", options: ["6", "5", "7", "8"], answer: 0, category: "🌍 General Knowledge" },
+  { q: "What planet is known as the Red Planet?", options: ["Mars", "Jupiter", "Saturn", "Venus"], answer: 0, category: "🌍 General Knowledge" },
+  { q: "What is the chemical symbol for gold?", options: ["Au", "Ag", "Go", "Gd"], answer: 0, category: "🌍 General Knowledge" },
+  { q: "Who painted the Mona Lisa?", options: ["Leonardo da Vinci", "Michelangelo", "Raphael", "Picasso"], answer: 0, category: "🌍 General Knowledge" },
+  { q: "What is the largest ocean on Earth?", options: ["Pacific", "Atlantic", "Indian", "Arctic"], answer: 0, category: "🌍 General Knowledge" },
+  { q: "How many bones are in the adult human body?", options: ["206", "196", "216", "186"], answer: 0, category: "🌍 General Knowledge" },
+  { q: "What language has the most native speakers in the world?", options: ["Mandarin Chinese", "Spanish", "English", "Hindi"], answer: 0, category: "🌍 General Knowledge" },
+];
+
+const CHAT_PROMPTS = [
+  "🎮 **What game could you play for 24 hours straight without getting bored?**",
+  "🏆 **What's your biggest gaming achievement you're actually proud of?**",
+  "🎌 **Which anime character do you relate to the most and why?**",
+  "💀 **What's the hardest game you've ever beaten?**",
+  "🎵 **Do you listen to music while gaming? Drop your go-to playlist genre!**",
+  "🌙 **Are you a night owl or early bird gamer?**",
+  "🤝 **Solo player or multiplayer? Which do you prefer and why?**",
+  "🔥 **What's a game everyone loves but you just can't get into?**",
+  "😤 **What's the most tilting thing that can happen in a game?**",
+  "🏅 **If you could be a pro gamer in any game, which would you pick?**",
+  "📱 **Mobile gamer or console/PC? Defend your choice.**",
+  "🎭 **If your life was an anime, what genre would it be?**",
+  "🌟 **What's an underrated game you think everyone should play?**",
+  "👾 **What was the first video game you ever played?**",
+  "🍕 **What's your go-to snack when you're gaming?**",
+  "⚔️ **RPG, FPS, or Strategy — which genre is the GOAT?**",
+  "🎬 **Which anime deserves a proper video game adaptation?**",
+  "💭 **Hot take: drop your most controversial gaming opinion.**",
+];
+
+// Track active trivia to prevent double-answering
+const activeTriviaAnswers = new Map(); // messageId → Set of userIds who answered
+
+function getRandomTrivia() {
+  return TRIVIA_QUESTIONS[Math.floor(Math.random() * TRIVIA_QUESTIONS.length)];
+}
+
+function getRandomPrompt() {
+  return CHAT_PROMPTS[Math.floor(Math.random() * CHAT_PROMPTS.length)];
+}
+
+async function sendTrivia(channel) {
+  try {
+    const q = getRandomTrivia();
+    const labels = ["🇦", "🇧", "🇨", "🇩"];
+    const letters = ["A", "B", "C", "D"];
+
+    // Shuffle answer options but track correct answer
+    const indices = [0, 1, 2, 3];
+    for (let i = indices.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [indices[i], indices[j]] = [indices[j], indices[i]];
+    }
+    const shuffledOptions = indices.map(i => q.options[i]);
+    const correctShuffledIndex = indices.indexOf(q.answer);
+
+    const optionText = shuffledOptions
+      .map((opt, i) => `${labels[i]} ${opt}`)
+      .join("\n");
+
+    const embed = new EmbedBuilder()
+      .setTitle(`${q.category} Trivia! 🧠`)
+      .setDescription(`**${q.q}**\n\n${optionText}\n\n⏱️ *Answer within 30 seconds!*`)
+      .setColor(0xf1c40f)
+      .setFooter({ text: "Click a button to answer • Only your first answer counts!" })
+      .setTimestamp();
+
+    const row = new ActionRowBuilder().addComponents(
+      ...letters.map((letter, i) =>
+        new ButtonBuilder()
+          .setCustomId(`trivia_${letter}_${correctShuffledIndex}`)
+          .setLabel(letter)
+          .setStyle(ButtonStyle.Primary)
+      )
+    );
+
+    const msg = await channel.send({ embeds: [embed], components: [row] });
+    activeTriviaAnswers.set(msg.id, { correct: correctShuffledIndex, voters: new Set(), correctUsers: [], wrongUsers: [] });
+
+    // Reveal answer after 30 seconds
+    setTimeout(async () => {
+      try {
+        const data = activeTriviaAnswers.get(msg.id);
+        activeTriviaAnswers.delete(msg.id);
+
+        const correctAnswer = shuffledOptions[correctShuffledIndex];
+        const correctList = data.correctUsers.length
+          ? data.correctUsers.map(u => `<@${u}>`).join(", ")
+          : "Nobody got it right! 😬";
+
+        const resultEmbed = new EmbedBuilder()
+          .setTitle(`${q.category} Trivia — Results! 🏁`)
+          .setDescription(`**${q.q}**\n\n✅ **Correct Answer: ${labels[correctShuffledIndex]} ${correctAnswer}**`)
+          .addFields(
+            { name: "🏆 Got it right", value: correctList, inline: false },
+            { name: "📊 Total answers", value: `${data.voters.size} member(s) answered`, inline: false },
+          )
+          .setColor(0x57f287)
+          .setTimestamp();
+
+        // Disable all buttons
+        const disabledRow = new ActionRowBuilder().addComponents(
+          ...letters.map((letter, i) =>
+            new ButtonBuilder()
+              .setCustomId(`trivia_done_${i}`)
+              .setLabel(`${letter}${i === correctShuffledIndex ? " ✓" : ""}`)
+              .setStyle(i === correctShuffledIndex ? ButtonStyle.Success : ButtonStyle.Secondary)
+              .setDisabled(true)
+          )
+        );
+
+        await msg.edit({ embeds: [resultEmbed], components: [disabledRow] });
+      } catch (e) {
+        console.error("❌ Trivia reveal failed:", e.message);
+      }
+    }, 30_000);
+
+    console.log(`🧠 Trivia posted: ${q.q}`);
+  } catch (e) {
+    console.error("❌ Failed to send trivia:", e.message);
+  }
+}
+
+async function sendChatPrompt(channel) {
+  try {
+    const prompt = getRandomPrompt();
+
+    const embed = new EmbedBuilder()
+      .setTitle("💬 Chat Prompt!")
+      .setDescription(prompt + "\n\n*Drop your answer below — let's see what everyone thinks!* 👇")
+      .setColor(0xe91e8c)
+      .setFooter({ text: "Magic Tiles 3 Community • Daily Prompt" })
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+    console.log(`💬 Chat prompt posted.`);
+  } catch (e) {
+    console.error("❌ Failed to send prompt:", e.message);
+  }
+}
+
+// ── Daily auto-scheduler ──────────────────────────────────────────────────────
+function scheduleDailyEngagement() {
+  const now = new Date();
+  const next = new Date();
+  next.setHours(DAILY_HOUR, 0, 0, 0);
+  if (next <= now) next.setDate(next.getDate() + 1); // push to tomorrow if past time
+
+  const msUntil = next - now;
+  console.log(`📅 Daily engagement scheduled in ${Math.round(msUntil / 60000)} minutes.`);
+
+  setTimeout(async () => {
+    try {
+      const channel = await client.channels.fetch(ENGAGE_CHANNEL_ID);
+      if (!channel) return console.error("❌ Engage channel not found!");
+
+      // Alternate between trivia and prompt each day
+      const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86_400_000);
+      if (dayOfYear % 2 === 0) {
+        await sendTrivia(channel);
+      } else {
+        await sendChatPrompt(channel);
+      }
+    } catch (e) {
+      console.error("❌ Daily engagement failed:", e.message);
+    }
+
+    // Reschedule for next day
+    scheduleDailyEngagement();
+  }, msUntil);
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 //  BUMP SYSTEM
@@ -399,6 +600,32 @@ client.on(Events.MessageCreate, async (message) => {
       }
       return;
     }
+
+    // !trivia — manually post a trivia question to the engage channel
+    if (message.content.trim() === "!trivia") {
+      try { await message.delete(); } catch (_) {}
+      const channel = await client.channels.fetch(ENGAGE_CHANNEL_ID).catch(() => null);
+      if (!channel) {
+        const r = await message.channel.send("❌ Engage channel not found! Check `ENGAGE_CHANNEL_ID`.");
+        setTimeout(() => r.delete().catch(() => {}), 5000);
+        return;
+      }
+      await sendTrivia(channel);
+      return;
+    }
+
+    // !prompt — manually post a chat prompt to the engage channel
+    if (message.content.trim() === "!prompt") {
+      try { await message.delete(); } catch (_) {}
+      const channel = await client.channels.fetch(ENGAGE_CHANNEL_ID).catch(() => null);
+      if (!channel) {
+        const r = await message.channel.send("❌ Engage channel not found! Check `ENGAGE_CHANNEL_ID`.");
+        setTimeout(() => r.delete().catch(() => {}), 5000);
+        return;
+      }
+      await sendChatPrompt(channel);
+      return;
+    }
   }
 
   // Non-owner tries !remind
@@ -446,6 +673,41 @@ client.on(Events.InteractionCreate, async (interaction) => {
     return;
   }
 
+  // ── Trivia answer buttons ─────────────────────────────────────────────────
+  if (interaction.isButton() && interaction.customId.startsWith("trivia_") && !interaction.customId.startsWith("trivia_done_")) {
+    const parts = interaction.customId.split("_"); // ["trivia", "A"/"B"/"C"/"D", correctIndex]
+    const chosenLetter = parts[1];
+    const correctIndex = parseInt(parts[2]);
+    const letters = ["A", "B", "C", "D"];
+    const chosenIndex = letters.indexOf(chosenLetter);
+
+    const data = activeTriviaAnswers.get(interaction.message.id);
+    if (!data) {
+      await interaction.reply({ content: "⏱️ This trivia has already ended!", ephemeral: true });
+      return;
+    }
+    if (data.voters.has(interaction.user.id)) {
+      await interaction.reply({ content: "❌ You already answered this one!", ephemeral: true });
+      return;
+    }
+
+    data.voters.add(interaction.user.id);
+    const isCorrect = chosenIndex === correctIndex;
+    if (isCorrect) {
+      data.correctUsers.push(interaction.user.id);
+    } else {
+      data.wrongUsers.push(interaction.user.id);
+    }
+
+    await interaction.reply({
+      content: isCorrect
+        ? "✅ **Correct!** Nice one, you got it! 🎉"
+        : `❌ **Wrong!** Better luck next time — the answer will be revealed shortly.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   // ── Mod application button ────────────────────────────────────────────────
   if (interaction.isButton() && interaction.customId === "open_mod_application") {
     await handleModApplicationButton(interaction);
@@ -478,9 +740,11 @@ client.once(Events.ClientReady, () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
   console.log(`⏰ Bump reminders every 15 minutes`);
   console.log(`📋 Mod app system ready — type !modapp to post`);
+  console.log(`🧠 Trivia & prompt system ready — type !trivia or !prompt`);
 
   sendBumpReminder();
   reminderInterval = setInterval(sendBumpReminder, REMINDER_INTERVAL_MS);
+  scheduleDailyEngagement();
 });
 
 client.login(TOKEN);
