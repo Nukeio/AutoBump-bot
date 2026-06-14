@@ -13,7 +13,7 @@ const REVIEW_CHANNEL_ID   = process.env.REVIEW_CHANNEL_ID;   // #application-rev
 const ENGAGE_CHANNEL_ID   = process.env.ENGAGE_CHANNEL_ID;   // #trivia-and-prompts channel
 const GIPHY_API_KEY       = process.env.GIPHY_API_KEY;        // Giphy API key for prompt GIFs
 const REMINDER_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes
-const ENGAGE_INTERVAL_MS   = 60 * 60 * 1000; // 1 hour
+const ENGAGE_INTERVAL_MS   = 240 * 60 * 1000; // 1 hour
 
 const client = new Client({
   intents: [
